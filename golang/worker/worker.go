@@ -28,10 +28,28 @@ var (
 		Name: "worker_batches",
 		Help: "Number of consumed batches",
 	})
+
+	downloadedWARCCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "worker_downloaded_warc",
+		Help: "Number of downloaded warc",
+	})
+
+	filteredWARCCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "worker_filtered_warc",
+		Help: "Number of filtered warc",
+	})
+
+	storedDocumentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "worker_stored_documents",
+		Help: "Number of stored documents",
+	})
 )
 
 func init() {
 	prometheus.MustRegister(batchCounter)
+	prometheus.MustRegister(downloadedWARCCounter)
+	prometheus.MustRegister(filteredWARCCounter)
+	prometheus.MustRegister(storedDocumentsCounter)
 }
 
 // extractText extracts text content from HTML using goquery
@@ -92,6 +110,8 @@ func ProcessBatch(
 		}
 		defer reader.Close()
 
+		downloadedWARCCounter.Add(float64(len(batch)))
+
 		// TODO pheymann: Why not just log errors and continue with the batch?
 		for {
 			record, err := reader.ReadRecord()
@@ -103,6 +123,7 @@ func ProcessBatch(
 				return fmt.Errorf("failed to read WARC record: %w", err)
 			}
 			if record.Header.Get("WARC-Type") != "response" {
+				filteredWARCCounter.Inc()
 				continue
 			}
 
@@ -117,6 +138,7 @@ func ProcessBatch(
 				htmlStart = bytes.Index(content, []byte("\n\n"))
 			}
 			if htmlStart == -1 {
+				filteredWARCCounter.Inc()
 				log.Printf("Could not find HTML content start for URL %s", item.SurtURL)
 				continue
 			}
@@ -131,6 +153,8 @@ func ProcessBatch(
 				if err := docStorage.SaveDocument(doc); err != nil {
 					return fmt.Errorf("failed to save document %s: %w", item.SurtURL, err)
 				}
+
+				storedDocumentsCounter.Inc()
 			}
 		}
 	}
