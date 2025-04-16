@@ -21,6 +21,27 @@ import (
 
 const (
 	batchSize = 50
+
+	// Records have the following format:
+	//
+	// 0 - SURL, 1 - timestamp, 2 - file name, 3 - startOffset, 4 - length, 5 - index
+	//
+	// 0,100,22,165)/ 20240722120756   cdx-00000.gz    0       188224  1
+	// 101,141,199,66)/robots.txt 20240714155331       cdx-00000.gz    188224  178351  2
+	// 104,223,1,100)/ 20240714230020  cdx-00000.gz    366575  178055  3
+	// 107,128,254,23)/sites.asp?domain=hydrogenheaters.com 20240725183414     cdx-00000.gz    544630  181599  4
+	// 109,77,250,142)/url?q=https://batmanapollo.ru 20240722133024    cdx-00000.gz    726229  181656  5
+	recordSURLIndex        = 0
+	recordTimestampIndex   = 1
+	recordFileNameIndex    = 2
+	recordStartOffsetIndex = 3
+	recordLengthIndex      = 4
+	recordIndexIndex       = 5
+
+	expectedNumberOfIndexFields = 3
+	indexSURLIndex              = 0
+	indexTimestampIndex         = 1
+	indexCrawlMetadataIndex     = 2
 )
 
 var (
@@ -65,19 +86,19 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 			continue
 		}
 
-		startOffset, err := strconv.Atoi(record[2])
+		startOffset, err := strconv.Atoi(record[recordStartOffsetIndex])
 		if err != nil {
 			log.Printf("Failed to parse start offset: %v", err)
 			continue
 		}
 
-		length, err := strconv.Atoi(record[3])
+		length, err := strconv.Atoi(record[recordLengthIndex])
 		if err != nil {
 			log.Printf("Failed to parse length: %v", err)
 			continue
 		}
 
-		cdxPath := fmt.Sprintf("%s/%s", commoncrawl.CrawlPath, record[1])
+		cdxPath := fmt.Sprintf("%s/%s", commoncrawl.CrawlPath, record[recordFileNameIndex])
 		content, err := downloader.DownloadAndUnzip(cdxPath, startOffset, length)
 		if err != nil {
 			log.Printf("Failed to download and unzip: %v", err)
@@ -91,19 +112,34 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 				continue
 			}
 
-			parts := strings.SplitN(line, " ", 3)
-			if len(parts) != 3 {
+			// The format of the metadata is:
+			//
+			// 0,100,22,165)/
+			// 20240722120756
+			// {
+			//     "url": "http://165.22.100.0/",
+			//     "mime": "text/html",
+			//     "mime-detected": "text/html",
+			//     "status": "301",
+			//     "digest": "DCNYNIFG5SBRCVS5PCUY4YY2UM2WAQ4R",
+			//     "length": "689",
+			//     "offset": "3499",
+			//     "filename": "crawl-data/CC-MAIN-2024-30/segments/1720763517846.73/crawldiagnostics/CC-MAIN-20240722095039-20240722125039-00443.warc.gz",
+			//     "redirect": "https://157.245.55.71/"
+			// }
+			parts := strings.SplitN(line, " ", expectedNumberOfIndexFields)
+			if len(parts) != expectedNumberOfIndexFields {
 				continue
 			}
 
 			var metadata map[string]interface{}
-			if err := json.Unmarshal([]byte(parts[2]), &metadata); err != nil {
+			if err := json.Unmarshal([]byte(parts[indexCrawlMetadataIndex]), &metadata); err != nil {
 				continue
 			}
 
 			url := common.URL{
-				SurtURL:   parts[0],
-				Timestamp: parts[1],
+				SurtURL:   parts[indexSURLIndex],
+				Timestamp: parts[indexTimestampIndex],
 				Metadata:  metadata,
 			}
 
