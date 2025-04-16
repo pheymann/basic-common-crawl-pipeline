@@ -25,8 +25,8 @@ type RabbitMQChannel struct {
 	channel *amqp.Channel
 }
 
-func NewRabbitMQChannel() (*RabbitMQChannel, error) {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:32773/")
+func NewRabbitMQChannel(port int) (*RabbitMQChannel, error) {
+	conn, err := amqp.Dial(fmt.Sprintf("amqp://guest:guest@localhost:%d/", port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}

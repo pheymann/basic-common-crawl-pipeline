@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -129,6 +130,13 @@ func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) err
 
 // TODO pheymann: Same as with the batcher, I would move the initialization to the main function.
 func Run() error {
+	rabbitMQPort := flag.Int("rabbitmq-port", 55005, "Port to connect to RabbitMQ")
+	flag.Parse()
+
+	if rabbitMQPort == nil || *rabbitMQPort <= 0 {
+		return fmt.Errorf("rabbitmq-port is required")
+	}
+
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		if err := http.ListenAndServe(":9001", nil); err != nil {
@@ -138,7 +146,7 @@ func Run() error {
 
 	downloader := commoncrawl.NewCCDownloader(commoncrawl.BaseURL)
 
-	channel, err := rabbitmq.NewRabbitMQChannel()
+	channel, err := rabbitmq.NewRabbitMQChannel(*rabbitMQPort)
 	if err != nil {
 		return fmt.Errorf("failed to create RabbitMQ channel: %w", err)
 	}
