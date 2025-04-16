@@ -37,6 +37,7 @@ func extractText(htmlContent []byte) string {
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlContent))
 	if err != nil {
 		log.Printf("Failed to parse HTML: %v", err)
+		// TODO pheymann: Why not return an explicit error here?
 		return ""
 	}
 
@@ -57,6 +58,9 @@ func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) err
 	}
 
 	for _, item := range batch {
+		// TODO pheymann: Maybe it makes sense to extract required fields already in the batcher?
+		// That way we would have certainty that they exist and are valid when data reaches the
+		// worker.
 		offset, err := strconv.Atoi(item.Metadata["offset"].(string))
 		if err != nil {
 			return fmt.Errorf("failed to parse offset: %w", err)
@@ -82,6 +86,7 @@ func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) err
 		}
 		defer reader.Close()
 
+		// TODO pheymann: Why not just log errors and continue with the batch?
 		for {
 			record, err := reader.ReadRecord()
 			if err != nil {
@@ -122,6 +127,7 @@ func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) err
 	return nil
 }
 
+// TODO pheymann: Same as with the batcher, I would move the initialization to the main function.
 func Run() error {
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())

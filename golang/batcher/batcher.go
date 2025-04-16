@@ -143,6 +143,7 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 				Metadata:  metadata,
 			}
 
+			// only continue if the URL references a page in English
 			if languages, ok := url.Metadata["languages"].(string); ok {
 				hasEnglish := false
 				// Split the comma-separated string into individual languages
@@ -194,6 +195,7 @@ func publishBatch(channel rabbitmq.MessageQueueChannel, batch []common.URL) erro
 	return nil
 }
 
+// TODO pheymann: I would move this whole initialization block to the main function. Explanation TBD.
 func Run() error {
 	clusterIdxFilename := flag.String("cluster-idx-filename", "", "Path to the cluster index file")
 	flag.Parse()
