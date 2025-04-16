@@ -5,3 +5,8 @@ type URL struct {
 	Timestamp string                 `json:"timestamp"`
 	Metadata  map[string]interface{} `json:"metadata"`
 }
+
+type Document struct {
+	URL  URL
+	Text string
+}

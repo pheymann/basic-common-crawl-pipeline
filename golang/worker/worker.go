@@ -20,6 +20,7 @@ import (
 	"github.com/aleph-alpha/case-study/basic-common-crawl-pipeline/golang/common"
 	"github.com/aleph-alpha/case-study/basic-common-crawl-pipeline/golang/commoncrawl"
 	"github.com/aleph-alpha/case-study/basic-common-crawl-pipeline/golang/rabbitmq"
+	"github.com/aleph-alpha/case-study/basic-common-crawl-pipeline/golang/storage"
 )
 
 var (
@@ -52,7 +53,11 @@ func extractText(htmlContent []byte) string {
 	return text
 }
 
-func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) error {
+func ProcessBatch(
+	downloader commoncrawl.Downloader,
+	delivery amqp.Delivery,
+	docStorage storage.Storage,
+) error {
 	var batch []common.URL
 	if err := json.Unmarshal(delivery.Body, &batch); err != nil {
 		return fmt.Errorf("failed to unmarshal batch: %w", err)
@@ -118,8 +123,14 @@ func ProcessBatch(downloader commoncrawl.Downloader, delivery amqp.Delivery) err
 
 			text := extractText(content[htmlStart+4:])
 			if text != "" {
-				log.Printf("Text: %s", text)
-				// TODO: Process the extracted text (e.g., save to file, send to another service)
+				log.Printf("storing document: %s", item.SurtURL)
+				doc := common.Document{
+					URL:  item,
+					Text: text,
+				}
+				if err := docStorage.SaveDocument(doc); err != nil {
+					return fmt.Errorf("failed to save document %s: %w", item.SurtURL, err)
+				}
 			}
 		}
 	}
@@ -156,8 +167,18 @@ func Run() error {
 		return fmt.Errorf("failed to set QoS: %w", err)
 	}
 
+	storage, err := storage.NewMiniOStorage(
+		"127.0.0.1:9005",
+		"minioadmin",
+		"minioadmin",
+		"web-crawler-documents",
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create storage connection: %w", err)
+	}
+
 	if err := channel.BasicConsume(rabbitmq.QueueName, func(delivery amqp.Delivery) {
-		if err := ProcessBatch(downloader, delivery); err != nil {
+		if err := ProcessBatch(downloader, delivery, storage); err != nil {
 			log.Printf("Failed to process batch: %v", err)
 			return
 		}
