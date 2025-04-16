@@ -32,11 +32,10 @@ const (
 	// 107,128,254,23)/sites.asp?domain=hydrogenheaters.com 20240725183414     cdx-00000.gz    544630  181599  4
 	// 109,77,250,142)/url?q=https://batmanapollo.ru 20240722133024    cdx-00000.gz    726229  181656  5
 	recordSURLIndex        = 0
-	recordTimestampIndex   = 1
-	recordFileNameIndex    = 2
-	recordStartOffsetIndex = 3
-	recordLengthIndex      = 4
-	recordIndexIndex       = 5
+	recordFileNameIndex    = 1
+	recordStartOffsetIndex = 2
+	recordLengthIndex      = 3
+	recordIndexIndex       = 4
 
 	expectedNumberOfIndexFields = 3
 	indexSURLIndex              = 0
@@ -198,10 +197,15 @@ func publishBatch(channel rabbitmq.MessageQueueChannel, batch []common.URL) erro
 // TODO pheymann: I would move this whole initialization block to the main function. Explanation TBD.
 func Run() error {
 	clusterIdxFilename := flag.String("cluster-idx-filename", "", "Path to the cluster index file")
+	rabbitMQPort := flag.Int("rabbitmq-port", 55005, "Port to connect to RabbitMQ")
 	flag.Parse()
 
 	if *clusterIdxFilename == "" {
 		return fmt.Errorf("cluster-idx-filename is required")
+	}
+
+	if rabbitMQPort == nil || *rabbitMQPort <= 0 {
+		return fmt.Errorf("rabbitmq-port is required")
 	}
 
 	go func() {
@@ -211,7 +215,7 @@ func Run() error {
 		}
 	}()
 
-	channel, err := rabbitmq.NewRabbitMQChannel()
+	channel, err := rabbitmq.NewRabbitMQChannel(*rabbitMQPort)
 	if err != nil {
 		return fmt.Errorf("failed to create channel: %w", err)
 	}
