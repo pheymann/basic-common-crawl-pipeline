@@ -49,27 +49,29 @@ var (
 		Help: "Number of published batches",
 	})
 
-	downloadedURLsCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "batcher_downloaded_urls",
-		Help: "Number of downloaded URLs",
+	downloadedURLArchivessCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "batcher_downloaded_url_archives",
+		Help: "Number of downloaded URL archives",
 	})
 
-	filteredURLsCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "batcher_filtered_urls",
-		Help: "Number of filtered URLs",
-	})
+	processedURLsCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "batcher_processed_urls",
+			Help: "Number of processed URLs",
+		},
+		[]string{"result"},
+	)
+)
 
-	queuedURLsCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "batcher_queued_urls",
-		Help: "Number of queued URLs",
-	})
+const (
+	processedURLsResultFiltered = "filtered"
+	processedURLsResultQueued   = "queued"
 )
 
 func init() {
 	prometheus.MustRegister(batchCounter)
-	prometheus.MustRegister(downloadedURLsCounter)
-	prometheus.MustRegister(filteredURLsCounter)
-	prometheus.MustRegister(queuedURLsCounter)
+	prometheus.MustRegister(downloadedURLArchivessCounter)
+	prometheus.MustRegister(processedURLsCounter)
 }
 
 func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader commoncrawl.Downloader) error {
@@ -122,13 +124,13 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 			continue
 		}
 
-		downloadedURLsCounter.Inc()
+		downloadedURLArchivessCounter.Inc()
 
 		// Parse the downloaded content into URLs
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
 			if line == "" {
-				filteredURLsCounter.Inc()
+				processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 				continue
 			}
 
@@ -149,13 +151,13 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 			// }
 			parts := strings.SplitN(line, " ", expectedNumberOfIndexFields)
 			if len(parts) != expectedNumberOfIndexFields {
-				filteredURLsCounter.Inc()
+				processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 				continue
 			}
 
 			var metadata map[string]interface{}
 			if err := json.Unmarshal([]byte(parts[indexCrawlMetadataIndex]), &metadata); err != nil {
-				filteredURLsCounter.Inc()
+				processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 				continue
 			}
 
@@ -178,16 +180,16 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 				}
 
 				if !hasEnglish {
-					filteredURLsCounter.Inc()
+					processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 					continue
 				}
 			} else {
-				filteredURLsCounter.Inc()
+				processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 				continue
 			}
 
 			if status, ok := url.Metadata["status"].(string); !ok || status != "200" {
-				filteredURLsCounter.Inc()
+				processedURLsCounter.WithLabelValues(processedURLsResultFiltered).Inc()
 				continue
 			}
 
@@ -199,7 +201,7 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 				}
 				foundURLs = nil
 
-				queuedURLsCounter.Add(float64(len(foundURLs)))
+				processedURLsCounter.WithLabelValues(processedURLsResultQueued).Add(float64(len(foundURLs)))
 			}
 		}
 	}
@@ -208,7 +210,7 @@ func ProcessIndex(filename string, mq rabbitmq.MessageQueueChannel, downloader c
 		if err := publishBatch(mq, foundURLs); err != nil {
 			log.Printf("Failed to publish batch: %v", err)
 		}
-		queuedURLsCounter.Add(float64(len(foundURLs)))
+		processedURLsCounter.WithLabelValues(processedURLsResultQueued).Add(float64(len(foundURLs)))
 	}
 
 	return nil

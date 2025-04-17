@@ -29,27 +29,24 @@ var (
 		Help: "Number of consumed batches",
 	})
 
-	downloadedWARCCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "worker_downloaded_warc",
-		Help: "Number of downloaded warc",
-	})
+	processedWARCFilesCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "worker_processed_warc_files",
+			Help: "Number of processed WARC files",
+		},
+		[]string{"result"},
+	)
+)
 
-	filteredWARCCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "worker_filtered_warc",
-		Help: "Number of filtered warc",
-	})
-
-	storedDocumentsCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "worker_stored_documents",
-		Help: "Number of stored documents",
-	})
+const (
+	processedWARCFilesResultDownloaded = "downloaded"
+	processedWARCFilesResultFiltered   = "filtered"
+	processedWARCFilesResultStored     = "stored"
 )
 
 func init() {
 	prometheus.MustRegister(batchCounter)
-	prometheus.MustRegister(downloadedWARCCounter)
-	prometheus.MustRegister(filteredWARCCounter)
-	prometheus.MustRegister(storedDocumentsCounter)
+	prometheus.MustRegister(processedWARCFilesCounter)
 }
 
 // extractText extracts text content from HTML using goquery
@@ -110,7 +107,7 @@ func ProcessBatch(
 		}
 		defer reader.Close()
 
-		downloadedWARCCounter.Add(float64(len(batch)))
+		processedWARCFilesCounter.WithLabelValues(processedWARCFilesResultDownloaded).Add(float64(len(batch)))
 
 		// TODO pheymann: Why not just log errors and continue with the batch?
 		for {
@@ -123,7 +120,7 @@ func ProcessBatch(
 				return fmt.Errorf("failed to read WARC record: %w", err)
 			}
 			if record.Header.Get("WARC-Type") != "response" {
-				filteredWARCCounter.Inc()
+				processedWARCFilesCounter.WithLabelValues(processedWARCFilesResultFiltered).Inc()
 				continue
 			}
 
@@ -138,7 +135,7 @@ func ProcessBatch(
 				htmlStart = bytes.Index(content, []byte("\n\n"))
 			}
 			if htmlStart == -1 {
-				filteredWARCCounter.Inc()
+				processedWARCFilesCounter.WithLabelValues(processedWARCFilesResultFiltered).Inc()
 				log.Printf("Could not find HTML content start for URL %s", item.SurtURL)
 				continue
 			}
@@ -154,7 +151,7 @@ func ProcessBatch(
 					return fmt.Errorf("failed to save document %s: %w", item.SurtURL, err)
 				}
 
-				storedDocumentsCounter.Inc()
+				processedWARCFilesCounter.WithLabelValues(processedWARCFilesResultStored).Inc()
 			}
 		}
 	}
