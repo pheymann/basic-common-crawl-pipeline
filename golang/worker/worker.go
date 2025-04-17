@@ -29,6 +29,11 @@ var (
 		Help: "Number of consumed batches",
 	})
 
+	downloadedWARCDataCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "worker_downloaded_warc_data",
+		Help: "Amount of WARC data downloaded so far",
+	})
+
 	processedWARCFilesCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "worker_processed_warc_files",
@@ -46,6 +51,7 @@ const (
 
 func init() {
 	prometheus.MustRegister(batchCounter)
+	prometheus.MustRegister(downloadedWARCDataCounter)
 	prometheus.MustRegister(processedWARCFilesCounter)
 }
 
@@ -100,6 +106,8 @@ func ProcessBatch(
 		if err != nil {
 			return fmt.Errorf("failed to download and unzip: %w", err)
 		}
+
+		downloadedWARCDataCounter.Add(float64(len(data)))
 
 		reader, err := warc.NewReader(bytes.NewReader(data))
 		if err != nil {
